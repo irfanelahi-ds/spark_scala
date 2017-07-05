@@ -1,0 +1,1 @@
+val rdd_length=sc.textFile("<>path").count
