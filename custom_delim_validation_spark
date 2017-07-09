@@ -1,0 +1,28 @@
+
+
+/* steps:
+set the relevant custom delimiter using spark context's hadoopConfiguration to set the proper record delimiter
+of textinputformat
+once set:
+
+File validation check(s):
+	> Triplet Availability check
+		pattern needs to be specified
+		from where I'll get the file name?
+		multiple triplets in a folder?
+		clubbing?
+	> no issues w.r.t scalability. need to cater for scenarios;
+
+Field validation check(s):
+> number of rows check - ok
+> column name check - ok
+> column type check
+> varchar columns length check
+> nulls check
+
+
+> reading multiple files using WholeTextFile -
+> improving logging - writing out a faulty rows with other metadata
+
+in each case, if error appears -> proceed. dont stop. just log that "row" in a file.
+in most cases, need to replace the usage of collect with something more scalable

@@ -1,0 +1,256 @@
+create external table sys_flex_batch 
+(id int, 
+name string,
+zip_code int,
+city string)
+stored as parquet 
+location '/user/Cloudera/spark_stuff/parquet_delta'
+
+
+select * from sys_flex_batch
+refresh sys_flex_batch
+describe sys_flex_batch
+//light keying code;
+
+drop table sys_flex_kymp
+CREATE TABLE IF NOT EXISTS sys_flex_kymp
+(
+  ASSET_LK              BIGINT
+, Key_Dmn_Id            SMALLINT     
+, Src_Key_Part1_Val     string
+, Pblcn_Start_Dt        TIMESTAMP
+, Pblcn_End_Dt          TIMESTAMP
+, File_Id               INT
+, Insrt_Prcss_Exctn_Id  INT
+, Updt_Prcss_Exctn_Id   INT
+, Agmnt_Ind             SMALLINT
+) 
+stored as parquet
+location '/user/Cloudera/hive_tables'
+
+
+ refresh sys_flex_kymp
+INSERT OVERWRITE TABLE sys_flex_kymp
+SELECT
+      MaxSur.MAX_SK + ROW_NUMBER() OVER 
+        (ORDER BY NKT.Src_Key_Part1_Val) as ASSET_LK
+    , 1 as Key_Dmn_Id
+    , NKT.Src_Key_Part1_Val
+    , now() as Pblcn_Start_Dt
+    , now() as Pblcn_End_Dt
+    , -1 as File_Id
+    , 1  as Insrt_Prcss_Exctn_Id
+    , NULL as Updt_Prcss_Exctn_Id
+    , 0 as Agmnt_Ind
+FROM
+    (
+    SELECT
+          id as Src_Key_Part1_Val
+    FROM sys_flex_batch2
+        GROUP BY id
+    ) NKT
+
+LEFT OUTER JOIN sys_flex_kymp SK
+             ON SK.Src_Key_Part1_Val  = NKT.Src_Key_Part1_Val
+,
+(
+        SELECT COALESCE(MAX(ASSET_LK),0) as MAX_SK
+        FROM sys_flex_kymp
+)MaxSur
+
+WHERE SK.ASSET_LK IS NULL
+
+
+//creating the parquet table again with string source key type:
+create external table sys_flex_batch2 
+(id string, 
+name string,
+zip_code int,
+city string)
+stored as parquet 
+location '/user/Cloudera/spark_stuff/parquet_delta'
+
+
+
+create table check_tbl(id int, name string) location '/user/Cloudera/hive_tables'
+insert into check_tbl values (1,"irfan")
+
+select * from check_tbl
+select * from sys_flex_batch
+
+create table flex2 (id int, name string, zip_code int, city string) stored as parquet location '/user/Cloudera/hive_tables'
+insert into table flex2 select * from sys_flex_batch
+
+select * from flex2
+
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS sys_flex_kymp3
+(
+  ASSET_LK              INT
+, Src_Key_Part1_Val     INT
+
+) 
+stored as parquet
+location '/user/Cloudera/hive_tables'
+
+
+
+
+INSERT OVERWRITE TABLE sys_flex_kymp3
+SELECT
+      ---CAST(MaxSur.MAX_SK + ROW_NUMBER() OVER (ORDER BY NKT.Src_Key_Part1_Val) as INT) as ASSET_LK
+  --  NKT.Src_Key_Part1_Val as Src_Key_Part1_Val
+*
+FROM
+    (
+    SELECT
+          id as Src_Key_Part1_Val
+    FROM sys_flex_batch
+        GROUP BY id
+    ) NKT
+
+LEFT OUTER JOIN sys_flex_kymp3 SK
+             ON 1=1
+             --SK.Src_Key_Part1_Val  = NKT.Src_Key_Part1_Val
+,
+(
+        SELECT MAX(ASSET_LK) as MAX_SK
+        FROM sys_flex_kymp3
+)MaxSur
+
+WHERE SK.ASSET_LK IS NULL
+
+select *
+from sys_flex_kymp3
+
+
+refresh sys_flex_kymp3
+
+select * from sys_flex_batch2
+describe sys_flex_batch2
+
+drop table sys_flex_kymp
+
+show create table sys_flex_kymp3
+
+select * from sys_flex_kymp3
+
+
+-------clean slate:
+select * from sys_flex_batch
+describe sys_flex_batch -- id is int;
+
+--now:
+drop table my_kymp
+CREATE TABLE IF NOT EXISTS my_kymp
+(
+  ASSET_LK              INT
+, Src_Key_Part1_Val     INT
+
+) 
+location '/user/Cloudera/hive_tables/my_kymp'
+
+insert into my_kymp values (1,2)
+select * from my_kymp
+select * from sys_flex_batch
+
+
+INSERT OVERWRITE TABLE my_kymp
+SELECT
+      MaxSur.MAX_SK + ROW_NUMBER() OVER (ORDER BY NKT.id) as ASSET_LK
+      ,   NKT.id as Src_Key_Part1_Val
+
+FROM
+    (
+    SELECT
+          id 
+    FROM sys_flex_batch
+        GROUP BY id
+    ) NKT
+
+LEFT OUTER JOIN my_kymp SK
+          ON   SK.Src_Key_Part1_Val  = NKT.id
+,
+(
+        SELECT MAX(ASSET_LK) as MAX_SK
+        FROM my_kymp
+)MaxSur
+
+WHERE SK.ASSET_LK IS NULL
+
+select * from my_kymp
+
+
+SELECT id FROM sys_flex_batch as NKT JOIN my_kymp as SK ON   SK.Src_Key_Part1_Val  = NKT.id -- this works;
+
+select 3+row_number() over (order by id) from sys_flex_batch
+
+
+---
+INSERT OVERWRITE TABLE my_kymp
+SELECT
+      MaxSur.MAX_SK + ROW_NUMBER() OVER (ORDER BY NKT.id) as ASSET_LK
+      ,   NKT.id as Src_Key_Part1_Val
+
+FROM
+    (
+    SELECT
+          id 
+    FROM sys_flex_batch
+        GROUP BY id
+    ) NKT
+
+LEFT OUTER JOIN my_kymp SK
+          ON   SK.Src_Key_Part1_Val  = NKT.id
+,
+(
+        SELECT MAX(ASSET_LK) as MAX_SK
+        FROM my_kymp
+)MaxSur
+
+WHERE SK.ASSET_LK IS NULL
+
+/* probably the following clause of code is generating NULLs which is the root cause of the issue; */
+
+insert into table my_kymp values (1,1)
+
+
+select * from my_kymp
+
+
+insert into my_kymp
+SELECT
+      cast(MaxSur.MAX_SK + ROW_NUMBER() OVER (ORDER BY NKT.id) as INT) as ASSET_LK
+      ,   NKT.id as Src_Key_Part1_Val
+
+FROM
+    (
+    SELECT
+          id 
+    FROM sys_flex_batch
+        GROUP BY id
+    ) NKT
+
+LEFT OUTER JOIN my_kymp SK
+          ON   SK.Src_Key_Part1_Val  = NKT.id
+,
+(
+        SELECT coalesce(MAX(ASSET_LK),0) as MAX_SK
+        FROM my_kymp
+)MaxSur
+
+WHERE SK.ASSET_LK IS NULL
+
+-- so this has been sorted out right?
+
+
+
+SELECT * FROM my_kymp
+--now the history handling query?
+-- 
+
+create table tz_1 (id int, name string, current_time timestamp) location 'user/
